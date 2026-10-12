@@ -30,10 +30,15 @@ def project_path(
     lead_times_min: list[float] = (5, 10, 15, 20, 30),
     base_uncertainty_km: float = 1.5,
     growth_km_per_min: float = 0.6,
+    velocity: tuple[float, float] | None = None,
 ) -> list[PathProjection]:
     """
     Extrapolate a tracked cell's position forward using its most recent
     motion vector, with uncertainty radius growing linearly with lead time.
+
+    velocity: (east_kmh, north_kmh) to use instead of the track's own
+    estimate, e.g. the typical motion of nearby storms when this track's
+    looks unreliable.
 
     Tightening vs. a generic cone comes from two things this uses that a
     climatological polygon doesn't:
@@ -42,7 +47,8 @@ def project_path(
          (a motion vector confirmed across 4+ scans is more trustworthy
          than one from 2 scans) — see `confidence_factor` below.
     """
-    velocity = track.velocity_kmh()
+    if velocity is None:
+        velocity = track.velocity_kmh()
     if velocity is None:
         return []
 

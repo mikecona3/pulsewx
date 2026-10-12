@@ -8,17 +8,14 @@ Examples:
 """
 
 import argparse
-import os
-import sys
+from datetime import timezone
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+import pyart
 
-import pyart  # noqa: E402
-
-from fetch_nexrad import fetch_latest  # noqa: E402
-from rotation_detect import candidates_across_sweeps  # noqa: E402
-from cell_track import identify_cells  # noqa: E402
-from visualize import plot_scan  # noqa: E402
+from fetch_nexrad import fetch_latest
+from rotation_detect import candidates_across_sweeps
+from cell_track import gate_areas_km2, identify_cells
+from visualize import plot_scan
 
 
 def main():
@@ -39,32 +36,36 @@ def main():
     print("Reading radar volume...")
     radar = pyart.io.read_nexrad_archive(scan_path)
 
-    print("Running rotation detection across all sweeps...")
+    print("Dealiasing velocity and running rotation detection across all sweeps...")
     candidates = candidates_across_sweeps(radar, shear_threshold_ms=args.shear_threshold)
     if candidates:
         print(f"  -> {len(candidates)} rotation candidate(s) found:")
         for c in candidates:
             print(f"     az={c.azimuth_deg:.1f}deg range={c.range_km:.1f}km "
                   f"elev={c.elevation_deg:.1f}deg shear={c.shear_ms:.1f}m/s "
-                  f"({c.lat:.4f}, {c.lon:.4f})")
+                  f"tilts={c.tilts} ({c.lat:.4f}, {c.lon:.4f})")
     else:
         print("  -> No rotation candidates above threshold.")
 
     print("Identifying storm cells from reflectivity...")
     refl = radar.get_field(0, "reflectivity")
     lats, lons, _ = radar.get_gate_lat_lon_alt(0)
-    from datetime import datetime, timezone
-    cells = identify_cells(refl, lats, lons, datetime.now(timezone.utc),
-                            dbz_threshold=args.dbz_threshold)
+    # Stamp cells with the scan's own start time, not the time we processed
+    # it — motion estimates divide distance by the time between scans.
+    scan_time = pyart.util.datetime_from_radar(
+        radar, only_use_cftime_datetimes=False, only_use_python_datetimes=True,
+    ).replace(tzinfo=timezone.utc)
+    areas = gate_areas_km2(radar.range["data"], int(radar.rays_per_sweep["data"][0]))
+    cells = identify_cells(refl, lats, lons, scan_time,
+                            dbz_threshold=args.dbz_threshold, gate_area_km2=areas)
     print(f"  -> {len(cells)} storm cell(s) above {args.dbz_threshold} dBZ")
 
     print(f"Plotting to {args.out}...")
     plot_scan(radar, sweep=0, candidates=candidates, save_path=args.out)
 
-    print("\nNote: cell tracking + motion nowcast require multiple scans over "
-          "time. Run this on a loop (e.g. every 5 min) and feed each scan's "
-          "cells into cell_track.update_tracks() to build tracks, then "
-          "nowcast.project_path() once a track has 2+ observations.")
+    print("\nNote: this looks at a single scan. Storm tracking and path "
+          "projection need consecutive scans; the web app's /api/radar "
+          "(radar_service.py) does that.")
 
 
 if __name__ == "__main__":

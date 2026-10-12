@@ -9,9 +9,17 @@ per grid cell, not per lat/lon:
 Docs: https://www.weather.gov/documentation/services-web-api
 """
 
+import os
+import time
+from functools import lru_cache
+
 import requests
 
-USER_AGENT = "tornado-tracker-weather-app (contact: replace-with-your-email@example.com)"
+# NWS asks every app to identify itself with a way to reach its owner (an
+# email or website), so they can get in touch before blocking misbehaving
+# traffic. Set NWS_CONTACT in the environment rather than editing this file.
+_CONTACT = os.environ.get("NWS_CONTACT", "").strip()
+USER_AGENT = f"PulseWX ({_CONTACT})" if _CONTACT else "PulseWX"
 BASE_URL = "https://api.weather.gov"
 
 
@@ -21,10 +29,27 @@ def _headers():
     return {"User-Agent": USER_AGENT, "Accept": "application/geo+json"}
 
 
+def _get(url: str, params: dict | None = None) -> requests.Response:
+    """GET from the NWS API, retrying once after a server error or timeout —
+    api.weather.gov returns occasional 500s that succeed a moment later."""
+    for attempt in (1, 2):
+        try:
+            resp = requests.get(url, params=params, headers=_headers(), timeout=10)
+            if resp.status_code < 500 or attempt == 2:
+                resp.raise_for_status()
+                return resp
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == 2:
+                raise
+        time.sleep(1)
+
+
+@lru_cache(maxsize=256)
 def get_grid_point(lat: float, lon: float) -> dict:
-    """Resolve a lat/lon to its NWS forecast office + grid cell."""
-    resp = requests.get(f"{BASE_URL}/points/{lat},{lon}", headers=_headers(), timeout=10)
-    resp.raise_for_status()
+    """Resolve a lat/lon to its NWS forecast office + grid cell. Cached: the
+    mapping from a point to its grid cell doesn't change, and every other
+    call here starts with it. Treat the returned dict as read-only."""
+    resp = _get(f"{BASE_URL}/points/{lat},{lon}")
     return resp.json()["properties"]
 
 
@@ -38,19 +63,30 @@ def get_forecast(lat: float, lon: float, hourly: bool = False) -> dict:
     """
     point = get_grid_point(lat, lon)
     url = point["forecastHourly"] if hourly else point["forecast"]
-    resp = requests.get(url, headers=_headers(), timeout=10)
-    resp.raise_for_status()
+    resp = _get(url)
     return resp.json()["properties"]
 
 
 def get_active_alerts(lat: float, lon: float) -> list[dict]:
     """Any active NWS alerts (watches/warnings/advisories) covering this point."""
-    resp = requests.get(
-        f"{BASE_URL}/alerts/active", params={"point": f"{lat},{lon}"},
-        headers=_headers(), timeout=10,
-    )
-    resp.raise_for_status()
+    resp = _get(f"{BASE_URL}/alerts/active", params={"point": f"{lat},{lon}"})
     return resp.json()["features"]
+
+
+@lru_cache(maxsize=1)
+def get_radar_stations() -> tuple[dict, ...]:
+    """All WSR-88D (NEXRAD) radar sites as {id, name, lat, lon}. Cached: the
+    list only changes when a radar is built or retired."""
+    resp = _get(f"{BASE_URL}/radar/stations", params={"stationType": "WSR-88D"})
+    return tuple(
+        {
+            "id": f["properties"]["id"],
+            "name": f["properties"]["name"],
+            "lat": f["geometry"]["coordinates"][1],
+            "lon": f["geometry"]["coordinates"][0],
+        }
+        for f in resp.json()["features"]
+    )
 
 
 def get_forecast_discussion(office_id: str) -> str:
@@ -60,17 +96,12 @@ def get_forecast_discussion(office_id: str) -> str:
     is the 3-letter office code from get_grid_point()['cwa'], e.g. 'BGM' for
     Binghamton.
     """
-    resp = requests.get(
-        f"{BASE_URL}/products/types/AFD/locations/{office_id}",
-        headers=_headers(), timeout=10,
-    )
-    resp.raise_for_status()
+    resp = _get(f"{BASE_URL}/products/types/AFD/locations/{office_id}")
     products = resp.json()["@graph"]
     if not products:
         return ""
     latest_id = products[0]["id"]
-    detail = requests.get(f"{BASE_URL}/products/{latest_id}", headers=_headers(), timeout=10)
-    detail.raise_for_status()
+    detail = _get(f"{BASE_URL}/products/{latest_id}")
     return detail.json()["productText"]
 
 
@@ -85,7 +116,7 @@ def summarize_forecast(lat: float, lon: float) -> dict:
             "office": point.get("cwa"),
         },
         "periods": daily["periods"],  # list of ~14 half-day periods (day/night pairs)
-        "updated": daily.get("updated"),
+        "updated": daily.get("updateTime") or daily.get("updated"),
     }
 
 

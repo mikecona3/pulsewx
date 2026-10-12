@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Forecast</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+  integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw==" crossorigin="anonymous">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+  integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g==" crossorigin="anonymous"></script>
 <style>
   :root {
     --ink: #1C2A38;
@@ -14,6 +18,8 @@
     --gold: #B9852C;
     --cold: #3B6E92;
     --warm: #B1543A;
+    --severe: #7B2D5B;
+    --rot: #C81E3A;
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
             "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
@@ -44,10 +50,23 @@
     margin-bottom: 22px;
   }
   .masthead .place {
+    font: inherit;
     font-size: 15px;
     font-weight: 600;
     letter-spacing: -0.01em;
+    color: var(--ink);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
   }
+  .masthead .place::after {
+    content: " ▾";
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .masthead .place:hover { color: var(--cold); }
   .masthead .meta {
     font-size: 12px;
     font-weight: 400;
@@ -88,6 +107,8 @@
   }
 
   .isobar {
+    display: block;
+    width: 100%;
     height: 46px;
     margin: -6px 0 26px;
   }
@@ -129,7 +150,8 @@
   .days { margin-bottom: 30px; }
   .day-row {
     display: grid;
-    grid-template-columns: 84px 1fr 48px auto 48px;
+    grid-template-columns: 84px minmax(0, 1fr) 40px 120px 40px;
+    grid-template-areas: "name cond lo bar hi";
     align-items: center;
     gap: 14px;
     padding: 11px 0;
@@ -137,15 +159,70 @@
     font-size: 13px;
   }
   .day-row:first-child { border-top: 1px solid var(--line); }
-  .day-row .dname { font-weight: 600; }
-  .day-row .dcond { color: var(--ink-soft); font-size: 12px; font-weight: 400; }
-  .day-row .hi { text-align: right; font-size: 16px; font-weight: 600; }
-  .day-row .lo { text-align: right; font-size: 16px; font-weight: 400; color: var(--ink-soft); }
-  .range-track { position: relative; height: 3px; background: var(--line); }
+  .day-row .dname { grid-area: name; font-weight: 600; }
+  .day-row .dcond { grid-area: cond; color: var(--ink-soft); font-size: 12px; font-weight: 400; }
+  .day-row .hi { grid-area: hi; text-align: right; font-size: 16px; font-weight: 600; }
+  .day-row .lo { grid-area: lo; text-align: right; font-size: 16px; font-weight: 400; color: var(--ink-soft); }
+  .range-track { grid-area: bar; position: relative; height: 3px; background: var(--line); }
+
+  /* Phones: tuck the condition under the day name so the temps keep room */
+  @media (max-width: 560px) {
+    .sheet { padding-left: 16px; padding-right: 16px; }
+    .day-row {
+      grid-template-columns: minmax(0, 1fr) 34px 64px 34px;
+      grid-template-areas:
+        "name lo bar hi"
+        "cond lo bar hi";
+      column-gap: 10px;
+      row-gap: 2px;
+    }
+  }
   .range-fill {
     position: absolute;
     height: 3px;
     background: linear-gradient(90deg, var(--cold), var(--gold));
+  }
+
+  /* ---- Radar ---- */
+  .radar { margin-bottom: 30px; }
+  .radar-line {
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+  }
+  .radar-line:last-of-type { border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+  .radar-line.warn { color: var(--warm); font-weight: 600; }
+  .radar-line .sub { color: var(--ink-soft); font-size: 12px; font-weight: 400; }
+  .radar-map {
+    height: 340px;
+    border: 1px solid var(--line);
+    background: var(--card);
+  }
+  .radar-key {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .radar-key i {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: -1px;
+  }
+  .radar-foot {
+    margin-top: 8px;
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+  @media (max-width: 560px) {
+    .radar-map { height: 280px; }
   }
 
   /* ---- Discussion ---- */
@@ -159,7 +236,6 @@
     color: var(--ink-soft);
     max-height: 320px;
     overflow-y: auto;
-    white-space: pre-wrap;
   }
   .discussion .dhead {
     color: var(--ink);
@@ -168,7 +244,10 @@
     margin-bottom: 10px;
     display: flex;
     justify-content: space-between;
-    white-space: normal;
+  }
+  .discussion .dbody {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .alert-banner {
@@ -195,6 +274,86 @@
     padding: 40px 0;
     text-align: center;
   }
+  .state-msg button {
+    margin-top: 14px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--cold);
+    background: none;
+    border: 1px solid var(--line);
+    padding: 7px 14px;
+    cursor: pointer;
+  }
+
+  /* ---- Location picker ---- */
+  .picker {
+    width: min(440px, calc(100vw - 32px));
+    max-height: min(520px, calc(100vh - 64px));
+    margin-top: 10vh;
+    padding: 0;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    font-family: var(--font);
+  }
+  .picker::backdrop { background: rgba(28, 42, 56, 0.35); }
+  .picker-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px 10px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .picker-head button,
+  .picker-current {
+    font: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--cold);
+  }
+  .picker input {
+    display: block;
+    width: calc(100% - 32px);
+    margin: 0 16px 10px;
+    padding: 9px 10px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--line);
+  }
+  .picker-current {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    border-top: 1px solid var(--line);
+  }
+  .picker-error {
+    padding: 0 16px 10px;
+    font-size: 12px;
+    color: var(--warm);
+  }
+  .picker-results { list-style: none; margin: 0; padding: 0; }
+  .picker-results button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    background: none;
+    border: none;
+    border-top: 1px solid var(--line);
+    padding: 9px 16px;
+    cursor: pointer;
+  }
+  .picker-results button:hover { background: var(--paper); }
+  .picker-results .sub { display: block; font-size: 11.5px; color: var(--ink-soft); }
 </style>
 </head>
 <body>
@@ -202,34 +361,85 @@
   <div class="state-msg" id="loading">Loading forecast…</div>
 </div>
 
+<dialog class="picker" id="picker">
+  <div class="picker-head">
+    <span>Change location</span>
+    <button type="button" id="pickerClose">Cancel</button>
+  </div>
+  <input type="search" id="pickerInput" placeholder="Search city or town" autocomplete="off">
+  <button type="button" class="picker-current" id="pickerCurrent">➤ Use current location</button>
+  <div class="picker-error" id="pickerError" hidden></div>
+  <ul class="picker-results" id="pickerResults"></ul>
+</dialog>
+
 <script>
-// Change these to move the app to a different location, or wire up
-// geolocation / a search box later.
-const LAT = 42.0987;
-const LON = -75.9180;
+const DEFAULT_LOCATION = { name: "Binghamton, NY", lat: 42.0987, lon: -75.9180 };
+const STORAGE_KEY = "pulsewx.location";
 const API_BASE = ""; // same-origin, backend serves this file too
+// City search. Free, no API key; limited to the US since NWS only covers the US.
+const GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
+
+let loc = loadSavedLocation() || DEFAULT_LOCATION;
+
+function loadSavedLocation() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved && Number.isFinite(saved.lat) && Number.isFinite(saved.lon)) return saved;
+  } catch (err) {
+    // Storage unavailable or corrupt — fall back to the default
+  }
+  return null;
+}
+
+function setLocation(next) {
+  // api.weather.gov/points rejects coordinates with more than 4 decimal places
+  loc = { name: next.name || null, lat: +next.lat.toFixed(4), lon: +next.lon.toFixed(4) };
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(loc)); } catch (err) { /* non-critical */ }
+  document.getElementById("app").innerHTML = `<div class="state-msg">Loading forecast…</div>`;
+  loadForecast();
+}
+
+function locQuery() {
+  return `lat=${loc.lat}&lon=${loc.lon}`;
+}
 
 async function loadForecast() {
   const app = document.getElementById("app");
   try {
-    const res = await fetch(`${API_BASE}/api/forecast?lat=${LAT}&lon=${LON}`);
+    const res = await fetch(`${API_BASE}/api/forecast?${locQuery()}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     render(data);
+    loadRadar();
     loadDiscussion();
     loadAlerts();
   } catch (err) {
-    app.innerHTML = `<div class="state-msg">Couldn't load live forecast (${err.message}).<br>
-      Check that the backend is running and reachable.</div>`;
+    app.innerHTML = `<div class="state-msg">Couldn't load live forecast for ${escapeHtml(loc.name || "this location")} (${escapeHtml(err.message)}).<br>
+      Check that the backend is running and reachable.<br>
+      <button type="button" onclick="openPicker()">Change location</button></div>
+      <div id="radarBox"></div>`;
+    loadRadar(); // radar comes from a different source, so it may still work
   }
+}
+
+// NWS period names are sometimes holidays ("Columbus Day") or phrases
+// ("This Afternoon"), so derive the weekday from the period's own date.
+// The date part of startTime is in the forecast location's time zone.
+function weekdayOf(startTime) {
+  return new Date(`${startTime.slice(0, 10)}T12:00:00Z`)
+    .toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 function render(data) {
   const app = document.getElementById("app");
   const daily = data.daily_periods || [];
   const hourly = data.hourly_periods || [];
-  const now = hourly[0];
-  const today = daily[0];
+  // Hero shows the current hour; falls back to the current half-day period
+  const current = hourly[0] || daily[0];
 
   const hourlyHtml = hourly.slice(0, 12).map(h => {
     const time = new Date(h.startTime);
@@ -250,20 +460,24 @@ function render(data) {
     const night = daily[i + 1] && !daily[i + 1].isDaytime ? daily[i + 1] : null;
     dayRows.push({ day: p, night });
   }
-  const allTemps = daily.map(p => p.temperature);
-  const minT = Math.min(...allTemps), maxT = Math.max(...allTemps);
+  for (const row of dayRows) {
+    row.hi = row.day.temperature;
+    // The last day often has no night period yet; show no low rather than guess
+    row.lo = row.night ? row.night.temperature : null;
+  }
+  // Bars share one scale, from the week's lowest temp to its highest
+  const temps = dayRows.flatMap(r => r.lo === null ? [r.hi] : [r.lo, r.hi]);
+  const minT = Math.min(...temps);
+  const maxT = Math.max(...temps);
   const span = Math.max(1, maxT - minT);
 
-  const daysHtml = dayRows.map(({ day, night }) => {
-    const hi = day.temperature;
-    const lo = night ? night.temperature : hi - 10;
-    const leftPct = ((lo - minT) / (span + 20)) * 100;
-    const rightPct = 100 - (((hi - minT) / (span + 20)) * 100) - 10;
+  const daysHtml = dayRows.map(({ day, hi, lo }, i) => {
+    const fill = lo === null ? "" : `<div class="range-fill" style="left:${((lo - minT) / span) * 100}%;right:${100 - ((hi - minT) / span) * 100}%"></div>`;
     return `<div class="day-row">
-      <div class="dname">${day.name.split(" ")[0]}</div>
+      <div class="dname">${i === 0 && daily[0].isDaytime ? "Today" : weekdayOf(day.startTime)}</div>
       <div class="dcond">${day.shortForecast}</div>
-      <div class="lo">${lo}°</div>
-      <div class="range-track"><div class="range-fill" style="left:${leftPct}%;right:${rightPct}%"></div></div>
+      <div class="lo">${lo === null ? "—" : `${lo}°`}</div>
+      <div class="range-track">${fill}</div>
       <div class="hi">${hi}°</div>
     </div>`;
   }).join("");
@@ -271,15 +485,15 @@ function render(data) {
   app.innerHTML = `
     <div class="alert-banner" id="alertBanner"></div>
     <div class="masthead">
-      <div class="place">${data.location.city || "—"}, ${data.location.state || ""}</div>
+      <button type="button" class="place" onclick="openPicker()" title="Change location">${escapeHtml(loc.name || `${data.location.city || "—"}, ${data.location.state || ""}`)}</button>
       <div class="meta">NWS Office ${data.location.office || "—"}<br>Updated ${data.updated ? new Date(data.updated).toLocaleString() : "—"}</div>
     </div>
 
     <div class="hero">
-      <div class="hero-temp">${now ? now.temperature : today.temperature}<sup>°F</sup></div>
+      <div class="hero-temp">${current.temperature}<sup>°F</sup></div>
       <div class="hero-detail">
-        <div class="cond">${today.shortForecast}</div>
-        Wind ${today.windDirection} ${today.windSpeed}
+        <div class="cond">${current.shortForecast}</div>
+        Wind ${current.windDirection} ${current.windSpeed}
       </div>
     </div>
 
@@ -294,6 +508,8 @@ function render(data) {
     <div class="section-label">5-day outlook</div>
     <div class="days">${daysHtml}</div>
 
+    <div id="radarBox"></div>
+
     <div id="discussionBox"></div>
 
     <div class="footnote">Live data from api.weather.gov (NOAA / National Weather Service)</div>
@@ -304,7 +520,7 @@ async function loadDiscussion() {
   const box = document.getElementById("discussionBox");
   if (!box) return;
   try {
-    const res = await fetch(`${API_BASE}/api/discussion?lat=${LAT}&lon=${LON}`);
+    const res = await fetch(`${API_BASE}/api/discussion?${locQuery()}`);
     const data = await res.json();
     if (data.error || !data.text) return;
     // Trim to a readable excerpt — full AFD text is long and fixed-width formatted
@@ -312,8 +528,8 @@ async function loadDiscussion() {
     box.innerHTML = `
       <div class="section-label" style="margin-top: 4px;">Forecast discussion</div>
       <div class="discussion">
-        <div class="dhead"><span>NWS ${data.office}</span></div>
-        ${excerpt}
+        <div class="dhead"><span>NWS ${escapeHtml(data.office)}</span></div>
+        <div class="dbody">${escapeHtml(excerpt.trim())}</div>
       </div>`;
   } catch (err) {
     // Non-critical — just omit the discussion panel if it fails
@@ -322,7 +538,7 @@ async function loadDiscussion() {
 
 async function loadAlerts() {
   try {
-    const res = await fetch(`${API_BASE}/api/alerts?lat=${LAT}&lon=${LON}`);
+    const res = await fetch(`${API_BASE}/api/alerts?${locQuery()}`);
     const data = await res.json();
     const banner = document.getElementById("alertBanner");
     if (!banner || !data.alerts || data.alerts.length === 0) return;
@@ -334,7 +550,278 @@ async function loadAlerts() {
   }
 }
 
+// ---- Radar ----
+
+const RADAR_REFRESH_MS = 5 * 60 * 1000;
+const KM_PER_MI = 1.609344;
+let radarMap = null;     // Leaflet map; rebuilt when the page re-renders
+let radarLayers = null;
+let radarFitted = false; // fit the view once per location, then keep the user's pan/zoom
+let radarSeq = 0;
+
+const mi = km => Math.round(km / KM_PER_MI);
+const mph = kmh => Math.round(kmh / KM_PER_MI);
+const token = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function compass(deg) {
+  return ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+          "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(deg / 22.5) % 16];
+}
+
+function where(item) {
+  return mi(item.distance_km) < 1 ? "at your location" : `${mi(item.distance_km)} mi ${compass(item.bearing_deg)} of you`;
+}
+
+function motionText(storm) {
+  const m = storm.motion;
+  if (!m) return "motion not known yet (needs 3 radar scans)";
+  return `moving ${compass(m.toward_deg)} at ${mph(m.speed_kmh)} mph` +
+    (m.source === "area" ? " (typical motion of nearby storms)" : "");
+}
+
+function stormColor(dbz) {
+  return dbz >= 60 ? token("--severe") : dbz >= 50 ? token("--warm") : token("--gold");
+}
+
+async function loadRadar(isRefresh = false) {
+  const box = document.getElementById("radarBox");
+  if (!box) return;
+  const seq = ++radarSeq;
+  const query = locQuery();
+  if (!isRefresh) {
+    radarFitted = false;
+    box.innerHTML = `<div class="section-label">Radar</div>
+      <div class="radar-foot">Loading the nearest radar… the first load for a radar station takes about 30 seconds.</div>`;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/radar?${query}`);
+    const data = await res.json();
+    if (seq !== radarSeq || query !== locQuery()) return; // a newer load (or location) took over
+    if (data.error) throw new Error(data.error);
+    renderRadar(data);
+  } catch (err) {
+    if (seq !== radarSeq) return;
+    if (isRefresh && document.getElementById("radarText")) return; // keep the last good data up
+    box.innerHTML = `<div class="section-label">Radar</div>
+      <div class="radar-foot">Radar unavailable (${escapeHtml(err.message)}).</div>`;
+  }
+}
+
+function renderRadar(data) {
+  const box = document.getElementById("radarBox");
+  const st = data.station;
+  const rangeMi = mi(st.range_km);
+
+  if (!document.getElementById("radarText")) {
+    box.innerHTML = `
+      <div class="section-label">Radar · ${escapeHtml(st.id)} ${escapeHtml(st.name)}</div>
+      <div id="radarText"></div>
+      <div id="radarMap" class="radar-map"></div>
+      <div class="radar-key">
+        <span><i style="background:${token("--gold")}"></i>Storm 40–49 dBZ</span>
+        <span><i style="background:${token("--warm")}"></i>50–59</span>
+        <span><i style="background:${token("--severe")}"></i>60+</span>
+        <span><i style="background:${token("--rot")}"></i>Possible rotation</span>
+        <span><i style="background:${token("--ink")}"></i>You</span>
+        <span>Dashed line and shading: projected path, next 30 min</span>
+      </div>
+      <div class="radar-foot" id="radarFoot"></div>`;
+  }
+
+  const lines = [];
+  const rot = data.rotation;
+  if (rot.length) {
+    const r = rot[0];
+    lines.push(`<div class="radar-line warn">Possible rotation ${where(r)}<br>
+      <span class="sub">${mph(r.shear_ms * 3.6)} mph of wind shear across it, seen on ${r.tilts} radar tilts${
+        rot.length > 1 ? ` · ${rot.length - 1} more within ${rangeMi} mi of the radar` : ""}</span></div>`);
+  } else {
+    lines.push(`<div class="radar-line">No rotation detected within ${rangeMi} mi of the radar.</div>`);
+  }
+
+  const storms = data.storms;
+  const over = storms.find(s => s.reaches_you_in_min === 0);
+  const coming = storms.filter(s => s.reaches_you_in_min > 0)
+    .sort((a, b) => a.reaches_you_in_min - b.reaches_you_in_min)[0];
+  if (over) {
+    lines.push(`<div class="radar-line warn">Storm over your location now<br>
+      <span class="sub">${over.max_dbz} dBZ, ${motionText(over)}</span></div>`);
+  } else if (coming) {
+    lines.push(`<div class="radar-line warn">Storm may reach you in about ${coming.reaches_you_in_min} min<br>
+      <span class="sub">Now ${where(coming)}, ${motionText(coming)}</span></div>`);
+  } else if (storms.length) {
+    lines.push(`<div class="radar-line">Nearest storm ${where(storms[0])}<br>
+      <span class="sub">${storms[0].max_dbz} dBZ, ${motionText(storms[0])}</span></div>`);
+  } else {
+    lines.push(`<div class="radar-line">No storms (40+ dBZ) within ${rangeMi} mi of the radar.</div>`);
+  }
+  document.getElementById("radarText").innerHTML = lines.join("");
+
+  const scan = data.scan_time ? new Date(data.scan_time) : null;
+  const ageMin = scan ? Math.round((Date.now() - scan) / 60000) : null;
+  document.getElementById("radarFoot").innerHTML =
+    `${scan ? `Radar scan ${scan.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} (${ageMin} min ago)` : ""}${
+      ageMin > 30 ? " — this radar may be offline; data is out of date" : ""} · refreshes every 5 min.<br>
+    Experimental, computer-detected, and not an official warning. Always follow NWS warnings.`;
+
+  drawRadarMap(data);
+}
+
+function drawRadarMap(data) {
+  const el = document.getElementById("radarMap");
+  if (!el) return;
+  if (typeof L === "undefined") { el.remove(); return; } // map library didn't load; the text still works
+  if (!radarMap || radarMap.getContainer() !== el) {
+    if (radarMap) radarMap.remove();
+    radarMap = L.map(el, { scrollWheelZoom: false });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 12,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(radarMap);
+    radarLayers = L.layerGroup().addTo(radarMap);
+    radarFitted = false;
+  }
+  radarLayers.clearLayers();
+
+  const st = data.station;
+  L.circle([st.lat, st.lon], {
+    radius: st.range_km * 1000, color: token("--ink-soft"), weight: 1, dashArray: "4 4", fill: false, interactive: false,
+  }).addTo(radarLayers);
+  L.circleMarker([st.lat, st.lon], { radius: 4, color: token("--ink"), weight: 1.5, fillColor: "#fff", fillOpacity: 1 })
+    .bindTooltip(`Radar ${escapeHtml(st.id)} (${escapeHtml(st.name)})`).addTo(radarLayers);
+
+  for (const s of data.storms) {
+    const color = stormColor(s.max_dbz);
+    if (s.path.length) {
+      // One faint disk per lead time (uncertainty + storm size) builds up a cone
+      for (const p of s.path) {
+        L.circle([p.lat, p.lon], {
+          radius: (p.radius_km + s.radius_km) * 1000, stroke: false, fillColor: color, fillOpacity: 0.06, interactive: false,
+        }).addTo(radarLayers);
+      }
+      const last = s.path[s.path.length - 1];
+      L.polyline([[s.lat, s.lon], [last.lat, last.lon]], { color, weight: 2, dashArray: "5 5", interactive: false })
+        .addTo(radarLayers);
+    }
+    L.circle([s.lat, s.lon], { radius: s.radius_km * 1000, color, weight: 1.5, fillColor: color, fillOpacity: 0.35 })
+      .bindTooltip(`Storm, ${s.max_dbz} dBZ, ${motionText(s)}`).addTo(radarLayers);
+  }
+
+  for (const r of data.rotation) {
+    L.circleMarker([r.lat, r.lon], { radius: 7, color: "#fff", weight: 2, fillColor: token("--rot"), fillOpacity: 1 })
+      .bindTooltip(`Possible rotation: ${mph(r.shear_ms * 3.6)} mph shear on ${r.tilts} tilts`).addTo(radarLayers);
+  }
+
+  L.circleMarker([loc.lat, loc.lon], { radius: 5, color: "#fff", weight: 2, fillColor: token("--ink"), fillOpacity: 1 })
+    .bindTooltip("You").addTo(radarLayers);
+
+  if (!radarFitted) {
+    // Computed directly: a circle can't report its bounds before the map has a view
+    const bounds = L.latLng(st.lat, st.lon).toBounds(st.range_km * 2000).extend([loc.lat, loc.lon]);
+    radarMap.fitBounds(bounds, { padding: [6, 6] });
+    radarFitted = true;
+  }
+}
+
+// ---- Location picker ----
+
+const picker = document.getElementById("picker");
+const pickerInput = document.getElementById("pickerInput");
+const pickerResults = document.getElementById("pickerResults");
+const pickerError = document.getElementById("pickerError");
+const pickerCurrent = document.getElementById("pickerCurrent");
+let searchTimer = null;
+let searchSeq = 0;
+
+function openPicker() {
+  pickerInput.value = "";
+  pickerResults.replaceChildren();
+  showPickerError(null);
+  picker.showModal();
+  pickerInput.focus();
+}
+
+function showPickerError(msg) {
+  pickerError.hidden = !msg;
+  pickerError.textContent = msg || "";
+}
+
+function chooseLocation(next) {
+  picker.close();
+  setLocation(next);
+}
+
+document.getElementById("pickerClose").addEventListener("click", () => picker.close());
+
+pickerInput.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(searchPlaces, 250);
+});
+
+async function searchPlaces() {
+  const query = pickerInput.value.trim();
+  const seq = ++searchSeq;
+  if (query.length < 2) {
+    pickerResults.replaceChildren();
+    return;
+  }
+  try {
+    const params = new URLSearchParams({ name: query, count: 8, countryCode: "US", language: "en", format: "json" });
+    const res = await fetch(`${GEOCODE_URL}?${params}`);
+    const data = await res.json();
+    if (seq !== searchSeq) return; // a newer search has started; drop this one
+    showPickerError(null);
+    renderResults(data.results || []);
+  } catch (err) {
+    if (seq === searchSeq) showPickerError("Search is unavailable right now.");
+  }
+}
+
+function renderResults(results) {
+  pickerResults.replaceChildren(...results.map(r => {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = r.name;
+    const sub = document.createElement("span");
+    sub.className = "sub";
+    sub.textContent = [r.admin2, r.admin1].filter(Boolean).join(", ");
+    btn.append(sub);
+    btn.addEventListener("click", () => chooseLocation({
+      name: [r.name, r.admin1].filter(Boolean).join(", "),
+      lat: r.latitude,
+      lon: r.longitude,
+    }));
+    li.append(btn);
+    return li;
+  }));
+}
+
+pickerCurrent.addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    showPickerError("Your browser doesn't support location lookup.");
+    return;
+  }
+  showPickerError(null);
+  pickerCurrent.textContent = "Locating…";
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      pickerCurrent.textContent = "➤ Use current location";
+      // No name: the masthead falls back to the nearest town NWS reports
+      chooseLocation({ name: null, lat: pos.coords.latitude, lon: pos.coords.longitude });
+    },
+    err => {
+      pickerCurrent.textContent = "➤ Use current location";
+      showPickerError(err.code === err.PERMISSION_DENIED
+        ? "Location access denied — allow it in your browser settings to use this."
+        : "Couldn't get your location.");
+    },
+    { timeout: 10000, maximumAge: 300000 }
+  );
+});
+
 loadForecast();
+setInterval(() => loadRadar(true), RADAR_REFRESH_MS);
 </script>
 </body>
 </html>
